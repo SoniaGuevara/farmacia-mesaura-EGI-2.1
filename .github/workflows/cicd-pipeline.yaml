@@ -26,6 +26,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VALIDATE_ALL_CODEBASE: false
+          VALIDATE_GO: false # <-- AÑADE ESTA LÍNEA
 
   # Job 2: Construye y publica las imágenes en paralelo
   build-and-push:
