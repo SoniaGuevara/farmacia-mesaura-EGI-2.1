@@ -1,7 +1,8 @@
 # .github/workflows/cicd-pipeline.yml
-# Versión simplificada SIN LINTER para asegurar que el pipeline avance.
+# VERSIÓN FINAL Y SIMPLIFICADA - SIN LINTER
+# Este pipeline se enfoca exclusivamente en la construcción (CI) y la preparación del despliegue (CD con GitOps).
 
-name: CI/CD Simplificado para Google Cloud con GitOps
+name: CI/CD Final con GitOps para Google Cloud
 
 on:
   push:
@@ -17,6 +18,7 @@ env:
 jobs:
   # ===================================================================
   # JOB 1: CONSTRUIR Y PUBLICAR IMÁGENES
+  # Este es ahora el primer y único job de la fase de CI.
   # ===================================================================
   build-and-push:
     name: 1. Construir y Publicar ${{ matrix.service }}
@@ -38,7 +40,7 @@ jobs:
           service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
       - name: Configurar Docker para Artifact Registry
-        run: gcloud auth configure-docker ${{ env.GAR_LOCATION }}-docker.pkg.dev
+        run: gcloud auth configure-docker ${{ env.GAR_LOCATION }}-docker.pkg.dev --quiet
 
       - name: Determinar ruta del contexto
         id: path-setter
@@ -70,7 +72,7 @@ jobs:
       - name: Clonar el repositorio de manifiestos
         uses: actions/checkout@v4
         with:
-          repository: SoniaGuevara/farmacia-mesaura-manifests # <-- TU REPO DE MANIFIESTOS
+          repository: SoniaGuevara/farmacia-mesaura-manifests
           token: ${{ secrets.GIT_OPS_TOKEN }}
 
       - name: Actualizar la etiqueta de la imagen con Kustomize
@@ -88,7 +90,7 @@ jobs:
           kustomize edit set image productcatalogservice=$IMAGE_PREFIX/productcatalogservice:$GIT_SHA
           kustomize edit set image recommendationservice=$IMAGE_PREFIX/recommendationservice:$GIT_SHA
           kustomize edit set image shippingservice=$IMAGE_PREFIX/shippingservice:$GIT_SHA
-
+      
       - name: Realizar commit y push de los cambios de configuración
         run: |
           git config --global user.name 'GitHub Actions Bot'
