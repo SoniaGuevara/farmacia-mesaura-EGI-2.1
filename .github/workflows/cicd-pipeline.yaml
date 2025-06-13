@@ -1,0 +1,101 @@
+# .github/workflows/cicd-pipeline.yml
+
+name: CI/CD Completo para Google Cloud con GitOps
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+env:
+  # Estas variables se llenarán con tus secretos CUANDO los crees en el futuro
+  GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  GAR_LOCATION: "us-central1"
+  ARTIFACT_REGISTRY_REPO: "farmacia-repo"
+
+jobs:
+  # Job 1: Revisa la calidad del código
+  lint:
+    name: 1. ✨ Linting de Código
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ejecutar Super-Linter
+        uses: github/super-linter@v6
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VALIDATE_ALL_CODEBASE: false
+
+  # Job 2: Construye y publica las imágenes en paralelo
+  build-and-push:
+    name: 2. Construir y Publicar ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    needs: lint
+    permissions:
+      contents: 'read'
+      id-token: 'write' # Permiso para la autenticación sin clave con GCP
+    strategy:
+      matrix:
+        service: [adservice, cartservice, checkoutservice, currencyservice, emailservice, frontend, paymentservice, productcatalogservice, recommendationservice, shippingservice]
+    steps:
+      - uses: actions/checkout@v4
+      - id: 'auth'
+        name: Autenticar con Google Cloud
+        uses: 'google-github-actions/auth@v2'
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+      - name: Configurar Docker para Artifact Registry
+        run: gcloud auth configure-docker ${{ env.GAR_LOCATION }}-docker.pkg.dev
+      - id: path-setter
+        name: Determinar ruta del contexto
+        run: |
+          if [[ "${{ matrix.service }}" == "cartservice" ]]; then
+            echo "path=./src/cartservice/src" >> $GITHUB_OUTPUT
+          else
+            echo "path=./src/${{ matrix.service }}" >> $GITHUB_OUTPUT
+          fi
+      - name: Construir y publicar en Google Artifact Registry
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ steps.path-setter.outputs.path }}
+          push: true
+          tags: ${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REGISTRY_REPO }}/${{ matrix.service }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # Job 3: Actualiza el repositorio de configuración (GitOps)
+  update-manifests:
+    name: 3. Actualizar Repositorio de Configuración
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Clonar el repositorio de manifiestos
+        uses: actions/checkout@v4
+        with:
+          # Reemplaza 'notsssofi' por tu usuario si es diferente
+          repository: notsssofi/farmacia-mesaura-manifests 
+          token: ${{ secrets.GIT_OPS_TOKEN }}
+      - name: Actualizar la etiqueta de la imagen con Kustomize
+        run: |
+          IMAGE_PREFIX="${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REGISTRY_REPO }}"
+          GIT_SHA="${{ github.sha }}"
+          cd kustomize/
+          kustomize edit set image adservice=$IMAGE_PREFIX/adservice:$GIT_SHA
+          kustomize edit set image cartservice=$IMAGE_PREFIX/cartservice:$GIT_SHA
+          kustomize edit set image checkoutservice=$IMAGE_PREFIX/checkoutservice:$GIT_SHA
+          kustomize edit set image currencyservice=$IMAGE_PREFIX/currencyservice:$GIT_SHA
+          kustomize edit set image emailservice=$IMAGE_PREFIX/emailservice:$GIT_SHA
+          kustomize edit set image frontend=$IMAGE_PREFIX/frontend:$GIT_SHA
+          kustomize edit set image paymentservice=$IMAGE_PREFIX/paymentservice:$GIT_SHA
+          kustomize edit set image productcatalogservice=$IMAGE_PREFIX/productcatalogservice:$GIT_SHA
+          kustomize edit set image recommendationservice=$IMAGE_PREFIX/recommendationservice:$GIT_SHA
+          kustomize edit set image shippingservice=$IMAGE_PREFIX/shippingservice:$GIT_SHA
+      - name: Realizar commit y push de los cambios de configuración
+        run: |
+          git config --global user.name 'GitHub Actions Bot'
+          git config --global user.email 'actions-bot@github.com'
+          git commit -am "Deploy: Actualizar imágenes a la versión ${{ github.sha }}"
+          git push
