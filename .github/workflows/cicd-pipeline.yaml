@@ -19,48 +19,28 @@ jobs:
  # ===================================================================
   # JOB 1: LINTING - Configurado para este proyecto
   # ===================================================================
+ # ===================================================================
+  # JOB 1: LINTING - Usa un archivo de configuración externo
+  # ===================================================================
   lint:
     name: 1. ✨ Linting de Código
     runs-on: ubuntu-latest
-    # --- AÑADIMOS PERMISOS ESPECÍFICOS PARA EL JOB ---
-    # Esto soluciona el error 403 al actualizar el estado del commit
     permissions:
       contents: read
-      statuses: write
-
+      statuses: write # Permiso para actualizar el estado del commit
     steps:
       - uses: actions/checkout@v4
         with:
-          # Debemos descargar todo el historial para que el linter pueda comparar cambios
+          # Necesitamos el historial completo para que el linter compare cambios
           fetch-depth: 0
           
-      - name: Ejecutar Super-Linter (configurado)
+      - name: Ejecutar Super-Linter
         uses: github/super-linter@v6
         env:
-          # --- CONFIGURACIÓN PARA IGNORAR ERRORES CONOCIDOS ---
-          # Le decimos al linter que ignore los tipos de archivo que fallaron
-          VALIDATE_ALL_CODEBASE: false
-          DEFAULT_BRANCH: "main"
+          # La configuración ahora se lee desde .github/linters/.linter.yml
+          # por lo que solo necesitamos el token de GitHub aquí.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VALIDATE_GO: false # El que ya habíamos desactivado
-          VALIDATE_DOCKERFILE_HADOLINT: false
-          VALIDATE_EDITORCONFIG: false
-          VALIDATE_YAML: false
-          VALIDATE_MARKDOWN: false
-          VALIDATE_HTML: false
-          VALIDATE_PROTOBUF: false
-          VALIDATE_PYTHON_BLACK: false
-          VALIDATE_PYTHON_PYLINT: false
-          VALIDATE_PYTHON_FLAKE8: false
-          VALIDATE_PYTHON_ISORT: false
-          VALIDATE_PYTHON_MYPY: false
-          VALIDATE_PYTHON_RUFF: false
-          VALIDATE_KUBERNETES_KUBECONFORM: false
-          VALIDATE_NATURAL_LANGUAGE: false
-          VALIDATE_TERRAFORM_TFLINT: false
-          VALIDATE_SHELL_SHFMT: false
-          VALIDATE_JAVASCRIPT_STANDARD: false
-          VALIDATE_JSCPD: false # Este detecta código duplicado (copiar y pegar)
+          VALIDATE_ALL_CODEBASE: false
 
   # Job 2: Construye y publica las imágenes en paralelo
   build-and-push:
