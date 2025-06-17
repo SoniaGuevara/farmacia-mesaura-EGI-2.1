@@ -1,5 +1,5 @@
 # .github/workflows/cicd-pipeline.yml
-# VERSIÓN FINAL - Multi-Entorno con Autenticación por Llave de Servicio (JSON)
+# VERSIÓN FINAL v2 - Añadido soporte para caché con Docker Buildx
 
 name: CI/CD Multi-Entorno con GitOps
 
@@ -23,14 +23,13 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: 'read'
-      # Ya no necesitamos el permiso 'id-token'
+      id-token: 'write' # Necesario para el auth con llave JSON si se cambia
     strategy:
       matrix:
         service: [adservice, cartservice, checkoutservice, currencyservice, emailservice, frontend, paymentservice, productcatalogservice, recommendationservice, shippingservice]
     steps:
       - uses: actions/checkout@v4
 
-      # --- CAMBIO IMPORTANTE: Usamos la llave JSON para autenticar ---
       - name: Autenticar con Google Cloud (usando llave JSON)
         id: 'auth'
         uses: 'google-github-actions/auth@v2'
@@ -39,6 +38,11 @@ jobs:
 
       - name: Configurar Docker para Artifact Registry
         run: gcloud auth configure-docker ${{ env.GAR_LOCATION }}-docker.pkg.dev --quiet
+
+      # --- PASO NUEVO AÑADIDO ---
+      # Activa un constructor de Docker más avanzado que sí soporta caché remoto.
+      - name: Configurar Docker Buildx
+        uses: docker/setup-buildx-action@v3
         
       - name: Determinar ruta del contexto
         id: path-setter
@@ -55,6 +59,7 @@ jobs:
           context: ${{ steps.path-setter.outputs.path }}
           push: true
           tags: ${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REGISTRY_REPO }}/${{ matrix.service }}:${{ github.sha }}
+          # Ahora estas líneas de caché funcionarán gracias al paso anterior
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
