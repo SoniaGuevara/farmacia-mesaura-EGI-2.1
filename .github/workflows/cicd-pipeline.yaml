@@ -1,13 +1,14 @@
 # .github/workflows/cicd-pipeline.yml
-# VERSIÓN FINAL Y COMPLETA - Lista para Google Cloud y Argo CD
+# VERSIÓN FINAL Y COMPLETA - Multi-Entorno (main, testing, desarrollo)
 
-name: CI/CD Final con GitOps para Google Cloud
+name: CI/CD Multi-Entorno con GitOps
 
 on:
   push:
-    branches: [ "main" ]
+    # --- CORREGIDO: El pipeline ahora se activa para tus ramas específicas ---
+    branches: [ "main", "testing", "desarrollo" ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ "main", "testing", "desarrollo" ]
 
 env:
   GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
@@ -23,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: 'read'
-      id-token: 'write'
+      id-token: 'write' # Permiso para la autenticación sin clave con GCP
     strategy:
       matrix:
         service: [adservice, cartservice, checkoutservice, currencyservice, emailservice, frontend, paymentservice, productcatalogservice, recommendationservice, shippingservice]
@@ -56,37 +57,38 @@ jobs:
 
   # ===================================================================
   # JOB 2: CD (PARTE 1) - ACTUALIZAR EL REPOSITORIO DE CONFIGURACIÓN
-  # Este es el job que le faltaba a tu versión de prueba.
   # ===================================================================
   update-manifests:
     name: 2. Actualizar Repositorio de Configuración
     runs-on: ubuntu-latest
     needs: build-and-push # Se ejecuta solo si el job anterior es exitoso
-    if: github.ref == 'refs/heads/main' # Y solo si es un push a la rama 'main'
+    if: github.event_name == 'push' # Y solo si es un push, no en un PR
     steps:
       - name: Clonar el repositorio de manifiestos
         uses: actions/checkout@v4
         with:
-          repository: SoniaGuevara/farmacia-mesaura-manifests # <-- TU REPO DE MANIFIESTOS
+          repository: SoniaGuevara/farmacia-mesaura-manifests
           token: ${{ secrets.GIT_OPS_TOKEN }}
+          # Clona la rama correcta (desarrollo, testing, o main) dinámicamente
+          ref: ${{ github.ref_name }}
+
       - name: Actualizar la etiqueta de la imagen con Kustomize
         run: |
           IMAGE_PREFIX="${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REGISTRY_REPO }}"
           GIT_SHA="${{ github.sha }}"
           cd kustomize/
-          kustomize edit set image adservice=$IMAGE_PREFIX/adservice:$GIT_SHA
-          kustomize edit set image cartservice=$IMAGE_PREFIX/cartservice:$GIT_SHA
-          kustomize edit set image checkoutservice=$IMAGE_PREFIX/checkoutservice:$GIT_SHA
-          kustomize edit set image currencyservice=$IMAGE_PREFIX/currencyservice:$GIT_SHA
-          kustomize edit set image emailservice=$IMAGE_PREFIX/emailservice:$GIT_SHA
-          kustomize edit set image frontend=$IMAGE_PREFIX/frontend:$GIT_SHA
-          kustomize edit set image paymentservice=$IMAGE_PREFIX/paymentservice:$GIT_SHA
-          kustomize edit set image productcatalogservice=$IMAGE_PREFIX/productcatalogservice:$GIT_SHA
-          kustomize edit set image recommendationservice=$IMAGE_PREFIX/recommendationservice:$GIT_SHA
-          kustomize edit set image shippingservice=$IMAGE_PREFIX/shippingservice:$GIT_SHA
+          # Este comando actualiza todas las imágenes a la nueva versión
+          kustomize edit set image "*/*@*" "$IMAGE_PREFIX/*@$GIT_SHA"
+
       - name: Realizar commit y push de los cambios de configuración
         run: |
           git config --global user.name 'GitHub Actions Bot'
           git config --global user.email 'actions-bot@github.com'
-          git commit -am "Deploy: Actualizar imágenes a la versión ${{ github.sha }}"
-          git push
+          # Hacemos commit solo si hay cambios reales en los archivos
+          if ! git diff --quiet; then
+            git commit -am "Deploy [${{ github.ref_name }}]: Actualizar imágenes a la versión ${{ github.sha }}"
+            # Hacemos push a la misma rama que activó el workflow
+            git push origin ${{ github.ref_name }}
+          else
+            echo "No hay cambios en los manifiestos para actualizar."
+          fi
