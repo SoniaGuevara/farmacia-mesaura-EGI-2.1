@@ -19,16 +19,27 @@ jobs:
   # ===================================================================
   # JOB 1: CI - CONSTRUIR Y PUBLICAR IMÁGENES
   # ===================================================================
+  # ===================================================================
+  # JOB DE PRUEBA: CONSTRUIR Y PUBLICAR IMÁGENES (CON DEPURACIÓN)
+  # ===================================================================
   build-and-push:
     name: 1. Construir y Publicar ${{ matrix.service }}
     runs-on: ubuntu-latest
     permissions:
       contents: 'read'
-      id-token: 'write' # Permiso para la autenticación sin clave con GCP
+      id-token: 'write'
     strategy:
       matrix:
-        service: [adservice, cartservice, checkoutservice, currencyservice, emailservice, frontend, paymentservice, productcatalogservice, recommendationservice, shippingservice]
+        # Limitamos la matriz a un solo servicio para que la prueba sea muy rápida
+        service: [frontend] 
     steps:
+      # --- PASO DE DEPURACIÓN AÑADIDO ---
+      - name: 🐞 DEPURACIÓN - Mostrar variables de GitHub
+        run: |
+          echo "================================================="
+          echo "Valor de github.repository: ${{ github.repository }}"
+          echo "================================================="
+
       - uses: actions/checkout@v4
       - name: Autenticar con Google Cloud
         id: 'auth'
@@ -54,7 +65,6 @@ jobs:
           tags: ${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REGISTRY_REPO }}/${{ matrix.service }}:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
   # ===================================================================
   # JOB 2: CD (PARTE 1) - ACTUALIZAR EL REPOSITORIO DE CONFIGURACIÓN
   # ===================================================================
