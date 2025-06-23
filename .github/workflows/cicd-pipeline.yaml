@@ -1,5 +1,6 @@
 # .github/workflows/cicd-pipeline.yml
 # VERSIÓN FINAL v2 - Añadido soporte para caché con Docker Buildx
+#Pequeño cambio para actualizar pipeline en todas las ramas
 
 name: CI/CD Multi-Entorno con GitOps
 
